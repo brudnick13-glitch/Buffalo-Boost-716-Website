@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Founding Members — Buffalo Boost 716</title>
+  <meta name="description" content="Join the Buffalo Boost 716 founding member program. Core and VIP tiers available.">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="icon" href="../images/logo.png" type="image/png">
+</head>
+<body>
+
+  <nav>
+    <a href="../index.html" class="logo">
+      <img src="../images/logo.png" alt="Buffalo Boost 716">
+    </a>
+    <button class="nav-toggle" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+    <ul>
+      <li><a href="../index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="founding.html">Join Us</a></li>
+      <li><a href="social.html">Follow</a></li>
+      <li><a href="buildlog.html">Build Log</a></li>
+      <li><a href="contact.html">Contact</a></li>
+    </ul>
+  </nav>
+
+  <div class="page-hero">
+    <div class="page-hero-inner">
+      <p class="section-label fade-in">Be Part of History</p>
+      <h1 class="section-title fade-in">Founding <span>Members</span></h1>
+      <div class="divider fade-in"></div>
+      <p class="fade-in" style="font-size: clamp(14px,1.8vw,16px); color: var(--chrome-dim); line-height: 1.75; max-width: 620px; margin-top: 10px;">
+        Buffalo Boost 716 is still being built — and we want you in on the ground floor. Founding members are the reason this opens its doors. Lock in your spot before we launch.
+      </p>
+    </div>
+  </div>
+
+  <section>
+    <p class="section-label text-center fade-in">Choose Your Tier</p>
+    <h2 class="section-title text-center fade-in">Get In <span>Early</span></h2>
+    <div class="divider center fade-in" style="margin-bottom: clamp(28px,4vw,48px);"></div>
+
+    <p class="founding-intro fade-in">
+      Two founding member tiers are available for a limited time. Both lock you in at pre-launch pricing and give you exclusive perks when we open. Spots are limited — don't sleep on this.
+    </p>
+
+    <div class="tier-grid">
+
+      <!-- CORE -->
+      <div class="tier-card fade-in">
+        <div class="tier-name">Core Member</div>
+        <div class="tier-price">$350 <span>one-time</span></div>
+        <ul class="tier-perks">
+          <li>Founding member status — forever recognized</li>
+          <li>Priority booking before general public</li>
+          <li>Discounted session rates at launch</li>
+          <li>Exclusive founding member events</li>
+          <li>Name on the founding member wall</li>
+        </ul>
+        <div class="tier-cta">
+          <a href="#waitlist" class="btn-outline" style="width: 100%; text-align: center; display: block;">Join as Core Member</a>
+        </div>
+      </div>
+
+      <!-- VIP -->
+      <div class="tier-card featured fade-in">
+        <div class="tier-badge">Best Value</div>
+        <div class="tier-name">VIP Member</div>
+        <div class="tier-price">$600 <span>one-time</span></div>
+        <ul class="tier-perks">
+          <li>Everything in Core, plus:</li>
+          <li>First access to all new experiences & lanes</li>
+          <li>Exclusive VIP-only events &amp; race nights</li>
+          <li>Complimentary sessions at launch</li>
+          <li>Behind-the-scenes build access</li>
+          <li>VIP lounge access when available</li>
+          <li>Prominent recognition on founding wall</li>
+        </ul>
+        <div class="tier-cta">
+          <a href="#waitlist" class="btn-primary" style="width: 100%; text-align: center; display: block;">Join as VIP Member</a>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- WAITLIST FORM -->
+    <div id="waitlist" class="waitlist-form fade-in">
+      <h3>🏁 Join the Waitlist</h3>
+      <p style="font-size: 13px; color: var(--chrome-dim); margin-bottom: 20px; line-height: 1.6;">
+        Drop your info below and we'll reach out with payment details and next steps. No commitment yet — just locking in your spot.
+      </p>
+      <form id="waitlist-form" action="https://formspree.io/f/YOUR_FORM_ID" method="POST">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="first">First Name</label>
+            <input type="text" id="first" name="first_name" required placeholder="John">
+          </div>
+          <div class="form-group">
+            <label for="last">Last Name</label>
+            <input type="text" id="last" name="last_name" required placeholder="Smith">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="wemail">Email Address</label>
+          <input type="email" id="wemail" name="email" required placeholder="you@email.com">
+        </div>
+        <div class="form-group">
+          <label for="phone">Phone (optional)</label>
+          <input type="tel" id="phone" name="phone" placeholder="(716) 000-0000">
+        </div>
+        <div class="form-group">
+          <label for="tier">Interested Tier</label>
+          <select id="tier" name="tier" required>
+            <option value="" disabled selected>Select a tier</option>
+            <option value="Core Member - $350">Core Member — $350</option>
+            <option value="VIP Member - $600">VIP Member — $600</option>
+            <option value="Undecided">Not sure yet</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="msg">Anything to add? (optional)</label>
+          <textarea id="msg" name="message" rows="3" placeholder="Questions, comments, how you heard about us..."></textarea>
+        </div>
+        <button type="submit" class="btn-primary" style="width: 100%; text-align: center; border: none; cursor: pointer; font-size: 14px;">
+          Submit — Lock In My Spot
+        </button>
+        <div id="waitlist-success" class="success-msg">
+          ✅ &nbsp;You're on the list! We'll be in touch soon with next steps.
+        </div>
+      </form>
+    </div>
+
+  </section>
+
+  <footer>
+    <img src="../images/logo.png" alt="Buffalo Boost 716">
+    <p>© 2025 Buffalo Boost 716 · Coming to Western New York</p>
+    <div class="footer-links">
+      <a href="../index.html">Home</a>
+      <a href="about.html">About</a>
+      <a href="buildlog.html">Build Log</a>
+      <a href="contact.html">Contact</a>
+    </div>
+  </footer>
+
+  <script src="../js/main.js"></script>
+</body>
+</html>
