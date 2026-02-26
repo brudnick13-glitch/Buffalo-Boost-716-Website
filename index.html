@@ -106,7 +106,7 @@
   <script>
   (function () {
     const canvas = document.getElementById('trackCanvas');
-    const ctx = canvas.getContext('2d');
+    const ctx    = canvas.getContext('2d');
 
     function resize() {
       canvas.width  = window.innerWidth;
@@ -115,111 +115,158 @@
     resize();
     window.addEventListener('resize', resize);
 
-    // ─── FIGURE-8 PATH ────────────────────────────────────────────────────
-    // Two elliptical loops sharing a crossover at canvas center.
-    // Large loop: LEFT side.  Small loop: RIGHT side.
-    // We walk each loop as a smooth parametric ellipse, meeting at crossover.
+    // ─────────────────────────────────────────────────────────────────────
+    // ISOMETRIC TRANSFORM
+    // We design the track in a flat 2-D "world" space, then apply an
+    // isometric projection: skew X by +isoSkewX * y, and scale Y down.
+    // This tilts the track so it reads as 3-D without any z-complexity.
+    // ─────────────────────────────────────────────────────────────────────
+    const ISO_SKEW = 0.30;   // horizontal shear per unit Y
+    const ISO_YSCALE = 0.55; // vertical compression
 
-    function buildFigure8(w, h) {
-      const cx = w * 0.50;
-      const cy = h * 0.50;
+    function project(wx, wy, cx, cy, scale) {
+      // world → isometric screen
+      const sx = wx + wy * ISO_SKEW;
+      const sy = wy * ISO_YSCALE;
+      return {
+        x: cx + sx * scale,
+        y: cy + sy * scale
+      };
+    }
 
-      // Large loop (left)
-      const lx  = cx - w * 0.200;
-      const lry_x = w * 0.200;
-      const lry_y = h * 0.290;
+    // ─────────────────────────────────────────────────────────────────────
+    // FIGURE-8 CENTERLINE  (world space, arbitrary units)
+    //
+    // Built from two ellipses that share a single crossover point at (0,0).
+    //
+    //  Large loop  – center at (-LCX, 0), radii (LRX, LRY)
+    //               goes counter-clockwise viewed from above
+    //  Small loop  – center at (+SCX, 0), radii (SRX, SRY)
+    //               goes clockwise viewed from above
+    //
+    // Together they form one continuous closed path that a car can follow
+    // forever: large loop → crossover → small loop → crossover → repeat.
+    // ─────────────────────────────────────────────────────────────────────
 
-      // Small loop (right) — noticeably smaller
-      const rx  = cx + w * 0.175;
-      const sry_x = w * 0.140;
-      const sry_y = h * 0.195;
+    // World-space parameters  (tweak here to reshape track)
+    const LCX = 260, LRX = 300, LRY = 220;   // large loop
+    const SCX = 210, SRX = 170, SRY = 140;   // small loop  (tighter)
 
-      const SEGS = 320;
+    const SEGS = 400; // smoothness per half-loop
+
+    function buildCenterline() {
       const pts = [];
 
-      // Large loop — start at rightmost point (crossover side), go CCW (top first)
-      for (let i = 0; i <= SEGS; i++) {
-        const a = -Math.PI + (Math.PI * 2 * i / SEGS);
+      // ── Large loop ──────────────────────────────────────────────────────
+      // Start at crossover (0,0) = rightmost point of large ellipse
+      // (angle = 0 → x = LCX + LRX which should equal 0 → LCX = -LRX... 
+      //  We set large loop center at x = -LCX so its right edge is at 0)
+      // angle sweeps 0 → 2π  (CCW)
+      for (let i = 0; i < SEGS; i++) {
+        const a = (Math.PI * 2 * i) / SEGS;
         pts.push({
-          x: lx + lry_x * Math.cos(a),
-          y: cy + lry_y * Math.sin(a)
+          x: -LCX + LRX * Math.cos(a),
+          y:         LRY * Math.sin(a)
         });
       }
 
-      // Small loop — start at leftmost point (crossover side), go CW (top first)
-      for (let i = 0; i <= SEGS; i++) {
-        const a = Math.PI - (Math.PI * 2 * i / SEGS);
+      // ── Small loop ──────────────────────────────────────────────────────
+      // Start at crossover (0,0) = leftmost point of small ellipse
+      // (angle = π → x = SCX + SRX*cos(π) = SCX - SRX = 0 → SCX = SRX)
+      // angle sweeps π → -π  (CW, so cars don't reverse at crossover)
+      for (let i = 0; i < SEGS; i++) {
+        const a = Math.PI - (Math.PI * 2 * i) / SEGS;
         pts.push({
-          x: rx + sry_x * Math.cos(a),
-          y: cy + sry_y * Math.sin(a)
+          x: SCX + SRX * Math.cos(a),
+          y:        SRY * Math.sin(a)
         });
       }
-
-      // Precompute arc lengths for uniform-speed sampling
-      pts._len = [0];
-      for (let i = 1; i < pts.length; i++) {
-        const dx = pts[i].x - pts[i-1].x;
-        const dy = pts[i].y - pts[i-1].y;
-        pts._len.push(pts._len[i-1] + Math.sqrt(dx*dx + dy*dy));
-      }
-      pts._total = pts._len[pts._len.length - 1];
 
       return pts;
     }
 
-    let _path = null;
-    let _pathKey = '';
+    const WORLD_PTS = buildCenterline();
 
-    function getPath(w, h) {
-      const key = w + 'x' + h;
-      if (key !== _pathKey) {
-        _path = buildFigure8(w, h);
-        _pathKey = key;
+    // Precompute arc lengths for uniform-speed sampling
+    function buildArcLen(pts) {
+      const len = [0];
+      for (let i = 1; i < pts.length; i++) {
+        const dx = pts[i].x - pts[i-1].x;
+        const dy = pts[i].y - pts[i-1].y;
+        len.push(len[i-1] + Math.sqrt(dx*dx + dy*dy));
       }
-      return _path;
+      return { len, total: len[len.length - 1] };
     }
+    const { len: ARC_LEN, total: ARC_TOTAL } = buildArcLen(WORLD_PTS);
 
-    // Sample at arc-length fraction [0,1]
-    function samplePath(path, frac) {
-      const target = ((frac % 1) + 1) % 1 * path._total;
-      let lo = 0, hi = path.length - 1;
+    function sampleWorld(frac) {
+      // returns world-space {x,y} at arc-length fraction [0,1)
+      const target = ((frac % 1) + 1) % 1 * ARC_TOTAL;
+      let lo = 0, hi = WORLD_PTS.length - 1;
       while (lo < hi - 1) {
         const mid = (lo + hi) >> 1;
-        if (path._len[mid] < target) lo = mid; else hi = mid;
+        if (ARC_LEN[mid] < target) lo = mid; else hi = mid;
       }
-      const t = (target - path._len[lo]) / ((path._len[hi] - path._len[lo]) || 1);
+      const t = (target - ARC_LEN[lo]) / ((ARC_LEN[hi] - ARC_LEN[lo]) || 1);
       return {
-        x: path[lo].x + (path[hi].x - path[lo].x) * t,
-        y: path[lo].y + (path[hi].y - path[lo].y) * t
+        x: WORLD_PTS[lo].x + (WORLD_PTS[hi].x - WORLD_PTS[lo].x) * t,
+        y: WORLD_PTS[lo].y + (WORLD_PTS[hi].y - WORLD_PTS[lo].y) * t
       };
     }
 
-    // Tangent angle at fraction
-    function tangentAt(path, frac) {
-      const d = 0.0015;
-      const a = samplePath(path, ((frac - d) + 1) % 1);
-      const b = samplePath(path, (frac + d) % 1);
-      return Math.atan2(b.y - a.y, b.x - a.x);
+    function worldTangent(frac) {
+      // world-space tangent angle (before isometric projection)
+      const d = 0.0012;
+      const a = sampleWorld(frac - d);
+      const b = sampleWorld(frac + d);
+      return { dx: b.x - a.x, dy: b.y - a.y };
     }
 
-    // ─── CARS ─────────────────────────────────────────────────────────────
-    const carDefs = [
-      { color: '#e8001e', glow: 'rgba(232,0,30,0.6)',    speed: 0.000200, frac: 0.00,  wPh: 0.0,  wFq: 0.90, wAmp: 0.36 },
-      { color: '#1a5fea', glow: 'rgba(26,95,234,0.6)',   speed: 0.000168, frac: 0.26,  wPh: 2.1,  wFq: 1.05, wAmp: 0.42 },
-      { color: '#c8d4e8', glow: 'rgba(200,212,232,0.5)', speed: 0.000228, frac: 0.54,  wPh: 4.0,  wFq: 0.78, wAmp: 0.38 },
-      { color: '#e8a800', glow: 'rgba(232,168,0,0.55)',  speed: 0.000148, frac: 0.78,  wPh: 5.5,  wFq: 1.15, wAmp: 0.44 },
-    ];
-    const cars = carDefs.map(d => ({ ...d }));
+    // Bounding box of world pts → used to center on canvas
+    function worldBounds() {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      WORLD_PTS.forEach(p => {
+        minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+        minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+      });
+      return { minX, maxX, minY, maxY,
+               wx: maxX - minX, wy: maxY - minY };
+    }
 
-    // ─── DRAW TRACK ───────────────────────────────────────────────────────
-    function drawTrack(path, w, h) {
-      // Track width — wide and bold
-      const TW = Math.min(w * 0.090, h * 0.110, 88);
+    // Compute scale & center so the projected track fits the canvas nicely
+    function getViewport(w, h) {
+      const bb = worldBounds();
+      const wcx = (bb.minX + bb.maxX) / 2;
+      const wcy = (bb.minY + bb.maxY) / 2;
 
-      function strokeLoop(lw, style, dash) {
+      // projected extents: x spans wx + wy*ISO_SKEW, y spans wy*ISO_YSCALE
+      const projW = bb.wx + bb.wy * ISO_SKEW;
+      const projH = bb.wy * ISO_YSCALE;
+
+      const pad = 0.72; // use 72% of screen
+      const scale = Math.min(w * pad / projW, h * pad / projH);
+
+      // screen center — shift slightly upward to leave room for text
+      const cx = w * 0.50;
+      const cy = h * 0.50;
+
+      return { scale, cx, cy, wcx, wcy };
+    }
+
+    // Project a world point to screen
+    function toScreen(wx, wy, vp) {
+      return project(wx - vp.wcx, wy - vp.wcy, vp.cx, vp.cy, vp.scale);
+    }
+
+    // ─── TRACK RENDERING ─────────────────────────────────────────────────
+    function drawTrack(vp, trackW) {
+      // Build screen-space poly from world centerline
+      const scr = WORLD_PTS.map(p => toScreen(p.x, p.y, vp));
+
+      function strokePoly(lw, style, dash) {
         ctx.beginPath();
-        ctx.moveTo(path[0].x, path[0].y);
-        for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+        ctx.moveTo(scr[0].x, scr[0].y);
+        for (let i = 1; i < scr.length; i++) ctx.lineTo(scr[i].x, scr[i].y);
         ctx.closePath();
         ctx.lineWidth   = lw;
         ctx.strokeStyle = style;
@@ -229,64 +276,76 @@
         ctx.stroke();
       }
 
-      // Soft outer glow
+      // Glow halo
       ctx.save();
-      ctx.shadowColor = 'rgba(208,2,27,0.06)';
-      ctx.shadowBlur  = 48;
-      strokeLoop(TW + 22, 'rgba(0,0,0,0.01)');
+      ctx.shadowColor = 'rgba(208,2,27,0.07)';
+      ctx.shadowBlur  = 44;
+      strokePoly(trackW + 20, 'rgba(0,0,0,0.01)');
       ctx.restore();
 
       // Asphalt
-      strokeLoop(TW, 'rgba(20,28,44,0.94)');
+      strokePoly(trackW, 'rgba(20, 28, 44, 0.93)');
 
-      // Outer kerb line
-      strokeLoop(TW + 3, 'rgba(200,212,232,0.14)');
+      // Outer edge
+      strokePoly(trackW + 3.5, 'rgba(200,212,232,0.15)');
 
-      // Inner kerb line
-      strokeLoop(TW - 6, 'rgba(200,212,232,0.07)');
+      // Inner edge
+      strokePoly(trackW - 7, 'rgba(200,212,232,0.07)');
 
-      // Center dashed
-      const dl = Math.min(w, h) * 0.020;
+      // Center dash
+      const dl = trackW * 0.30;
       ctx.save();
-      ctx.setLineDash([dl, dl * 0.7]);
-      strokeLoop(1.4, 'rgba(200,212,232,0.08)');
+      ctx.setLineDash([dl, dl * 0.65]);
+      strokePoly(1.3, 'rgba(200,212,232,0.09)');
       ctx.restore();
 
-      // ── Solid red start/finish line at crossover
-      const sfFrac = 0.002;
-      const sfPos  = samplePath(path, sfFrac);
-      const sfAng  = tangentAt(path, sfFrac);
+      // ── Solid red start/finish line at crossover (frac ≈ 0)
+      const sfW  = sampleWorld(0.001);
+      const sfS  = toScreen(sfW.x, sfW.y, vp);
+      const tang = worldTangent(0.001);
+
+      // Project tangent through isometric transform to get screen angle
+      const tA = toScreen(tang.dx * 0.01, tang.dy * 0.01, { ...vp, cx: 0, cy: 0 });
+      const sfAngle = Math.atan2(tA.y, tA.x);
+
       ctx.save();
-      ctx.translate(sfPos.x, sfPos.y);
-      ctx.rotate(sfAng + Math.PI / 2);
-      ctx.shadowColor = 'rgba(208,2,27,0.8)';
-      ctx.shadowBlur  = 12;
+      ctx.translate(sfS.x, sfS.y);
+      ctx.rotate(sfAngle + Math.PI / 2);
+      ctx.shadowColor = 'rgba(208,2,27,0.85)';
+      ctx.shadowBlur  = 14;
       ctx.fillStyle   = '#d0021b';
-      ctx.fillRect(-(TW / 2 + 2), -4, TW + 4, 8);
+      ctx.fillRect(-(trackW / 2 + 2), -4.5, trackW + 4, 9);
       ctx.restore();
-
-      return TW;
     }
 
-    // ─── DRAW CAR — slim modern rectangle ────────────────────────────────
-    function drawCar(x, y, angle, car, scale) {
+    // ─── CAR ─────────────────────────────────────────────────────────────
+    const carDefs = [
+      { color: '#e8001e', glow: 'rgba(232,0,30,0.65)',    speed: 0.000195, frac: 0.00,  wPh: 0.0,  wFq: 0.85, wAmp: 0.34 },
+      { color: '#1a5fea', glow: 'rgba(26,95,234,0.65)',   speed: 0.000162, frac: 0.26,  wPh: 2.2,  wFq: 1.05, wAmp: 0.40 },
+      { color: '#c8d4e8', glow: 'rgba(200,212,232,0.55)', speed: 0.000225, frac: 0.54,  wPh: 4.1,  wFq: 0.75, wAmp: 0.36 },
+      { color: '#e8a800', glow: 'rgba(232,168,0,0.60)',   speed: 0.000145, frac: 0.78,  wPh: 5.6,  wFq: 1.10, wAmp: 0.42 },
+    ];
+    const cars = carDefs.map(d => ({ ...d }));
+
+    function drawCar(sx, sy, screenAngle, car, scale) {
       ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(angle);
+      ctx.translate(sx, sy);
+      ctx.rotate(screenAngle);
+      // Isometric foreshortening on the car body itself
+      ctx.scale(1, ISO_YSCALE * 0.95);
 
-      const L = 11 * scale;  // half-length
-      const W =  4 * scale;  // half-width
-      const r =  1.8 * scale;
+      const L = 10 * scale;
+      const W =  3.8 * scale;
+      const r =  1.6 * scale;
 
-      // Glow halo
       ctx.shadowColor = car.glow;
-      ctx.shadowBlur  = 12 * scale;
+      ctx.shadowBlur  = 11 * scale;
 
       // Body
       ctx.beginPath();
       ctx.moveTo(-L + r, -W);
       ctx.lineTo( L - r, -W);
-      ctx.arcTo(  L, -W,  L, -W + r, r);
+      ctx.arcTo(  L, -W,  L,  -W + r, r);
       ctx.lineTo( L,  W - r);
       ctx.arcTo(  L,  W,  L - r,  W, r);
       ctx.lineTo(-L + r,  W);
@@ -298,64 +357,77 @@
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      // Dark cockpit band — front half
-      ctx.beginPath();
-      ctx.rect(L * 0.05, -W * 0.72, L * 0.65, W * 1.44);
+      // Cockpit band
       ctx.fillStyle = 'rgba(0,0,0,0.40)';
-      ctx.fill();
+      ctx.fillRect(L * 0.05, -W * 0.72, L * 0.62, W * 1.44);
 
       // Top highlight
       ctx.beginPath();
       ctx.moveTo(-L + r, -W + 0.8);
       ctx.lineTo( L - r, -W + 0.8);
       ctx.strokeStyle = 'rgba(255,255,255,0.20)';
-      ctx.lineWidth   = 0.8;
+      ctx.lineWidth   = 0.7;
       ctx.setLineDash([]);
       ctx.stroke();
 
       // Front light
       ctx.beginPath();
-      ctx.arc(L - 1.5 * scale, 0, 1.2 * scale, 0, Math.PI * 2);
+      ctx.arc(L - 1.4 * scale, 0, 1.1 * scale, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,245,190,0.92)';
       ctx.fill();
 
       ctx.restore();
     }
 
-    // ─── ANIMATION LOOP ───────────────────────────────────────────────────
+    // ─── ANIMATION ───────────────────────────────────────────────────────
     let lastTime = 0;
 
     function animate(ts) {
       const dt = Math.min(ts - lastTime, 50);
-      lastTime = ts;
+      lastTime  = ts;
 
       const w = canvas.width, h = canvas.height;
       ctx.clearRect(0, 0, w, h);
 
-      const path   = getPath(w, h);
-      const TW     = drawTrack(path, w, h);
-      const scale  = Math.max(0.55, Math.min(1.1, Math.min(w, h) / 700));
-      const tSec   = ts * 0.001;
-      const maxLat = TW * 0.30; // max lateral weave — well inside kerbs
+      const vp     = getViewport(w, h);
+      const trackW = Math.min(w, h) * 0.082;
+
+      drawTrack(vp, trackW);
+
+      const carScale  = vp.scale * 0.038;
+      const maxLat    = trackW * 0.29;  // weave within lane
+      const tSec      = ts * 0.001;
 
       cars.forEach(car => {
+        // Advance — speed is arc-fraction per ms
         car.frac = (car.frac + car.speed * dt) % 1;
 
-        const pos   = samplePath(path, car.frac);
-        const angle = tangentAt(path, car.frac);
+        // World position
+        const wp  = sampleWorld(car.frac);
+        const tan = worldTangent(car.frac);
 
-        // Normal vector (perpendicular to track direction)
-        const nx = -Math.sin(angle);
-        const ny =  Math.cos(angle);
+        // World-space normal (perpendicular to tangent)
+        const tlen  = Math.sqrt(tan.dx * tan.dx + tan.dy * tan.dy) || 1;
+        const wnx   = -tan.dy / tlen;
+        const wny   =  tan.dx / tlen;
 
-        // Smooth sinusoidal weave
-        const lateral = Math.sin(tSec * car.wFq + car.wPh) * car.wAmp * maxLat;
+        // Lateral weave in world space, then project
+        const latFrac = Math.sin(tSec * car.wFq + car.wPh) * car.wAmp;
 
-        drawCar(
-          pos.x + nx * lateral,
-          pos.y + ny * lateral,
-          angle, car, scale
-        );
+        // Convert world lateral offset to screen pixels via projection
+        // We offset in world space and re-project
+        const worldOff = (latFrac * maxLat) / vp.scale;
+        const wox = wp.x + wnx * worldOff;
+        const woy = wp.y + wny * worldOff;
+
+        const sp = toScreen(wox, woy, vp);
+
+        // Screen-space angle: project tangent vector
+        const ta = toScreen(wp.x + tan.dx * 0.5, wp.y + tan.dy * 0.5, vp);
+        const tb = toScreen(wp.x - tan.dx * 0.5, wp.y - tan.dy * 0.5, vp);
+        const screenAngle = Math.atan2(ta.y - tb.y, ta.x - tb.x);
+
+        drawCar(sp.x, sp.y, screenAngle, car, carScale);
       });
 
       requestAnimationFrame(animate);
