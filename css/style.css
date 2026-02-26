@@ -136,68 +136,14 @@ nav ul li a:hover::after, nav ul li a.active::after { width: 100%; }
   padding: 80px 20px 60px;
 }
 
-.track-wrap {
+/* CANVAS TRACK */
+.track-canvas {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
-}
-
-.track-oval {
-  width: min(900px, 92vw);
-  height: min(480px, 50vw);
-  border: clamp(8px, 2vw, 20px) solid rgba(200,212,232,0.06);
-  border-radius: 50%;
-  position: relative;
-  box-shadow: 0 0 80px rgba(208,2,27,0.05), inset 0 0 100px rgba(8,15,34,0.9);
-}
-
-.track-oval::before {
-  content: '';
-  position: absolute;
-  inset: clamp(8px, 2vw, 20px);
-  border: 2px solid rgba(200,212,232,0.03);
-  border-radius: 50%;
-}
-
-.car-wrap {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.car {
-  position: absolute;
-  width: clamp(16px, 2.5vw, 32px);
-  height: clamp(8px, 1.2vw, 16px);
-  border-radius: 40% 40% 20% 20%;
-  offset-rotate: auto;
-}
-
-.car::after {
-  content: '';
-  position: absolute;
-  right: -5px; top: 50%;
-  transform: translateY(-50%);
-  width: 8px; height: 3px;
-  border-radius: 2px;
-  opacity: 0.7;
-}
-
-.car-red   { background: #e8001e; box-shadow: 0 0 12px #e8001e, 0 0 24px rgba(232,0,30,0.4); animation: drive 5.8s linear infinite; }
-.car-blue  { background: #1565e8; box-shadow: 0 0 12px #1565e8, 0 0 24px rgba(21,101,232,0.4); animation: drive 7.2s linear infinite; animation-delay: -2.1s; }
-.car-white { background: #d0d8f0; box-shadow: 0 0 12px #d0d8f0, 0 0 24px rgba(208,216,240,0.4); animation: drive 4.9s linear infinite; animation-delay: -3.8s; }
-.car-gold  { background: #f0c040; box-shadow: 0 0 12px #f0c040, 0 0 24px rgba(240,192,64,0.4); animation: drive 7.9s linear infinite; animation-delay: -0.9s; }
-.car-red::after { background: #e8001e; }
-.car-blue::after { background: #1565e8; }
-.car-white::after { background: #d0d8f0; }
-.car-gold::after { background: #f0c040; }
-
-@keyframes drive {
-  0%   { offset-distance: 0%; }
-  100% { offset-distance: 100%; }
+  z-index: 1;
 }
 
 .hero-glow {
@@ -205,6 +151,7 @@ nav ul li a:hover::after, nav ul li a.active::after { width: 100%; }
   inset: 0;
   background: radial-gradient(ellipse 60% 50% at 50% 50%, rgba(208,2,27,0.07) 0%, transparent 70%);
   pointer-events: none;
+  z-index: 0;
 }
 
 .hero-content {
@@ -330,6 +277,7 @@ nav ul li a:hover::after, nav ul li a.active::after { width: 100%; }
   gap: 8px;
   opacity: 0.35;
   animation: fadeUp 1s 2s ease both;
+  z-index: 2;
 }
 
 .scroll-hint span {
