@@ -7,6 +7,17 @@
   <meta name="description" content="WNY's first indoor FPV RC car racing experience. Coming soon to Western New York.">
   <link rel="stylesheet" href="css/style.css">
   <link rel="icon" href="images/logo.png" type="image/png">
+  <style>
+    /* Override nav logo to be larger */
+    nav .logo img {
+      height: clamp(52px, 8vw, 80px) !important;
+      width: auto;
+    }
+    /* Override hero logo to be doubled */
+    .hero-logo {
+      width: clamp(260px, 52vw, 480px) !important;
+    }
+  </style>
 </head>
 <body>
 
@@ -32,7 +43,7 @@
   <section class="hero">
     <div class="hero-glow"></div>
 
-    <!-- Animated track + cars via canvas -->
+    <!-- Animated Indy-style isometric track + cars via canvas -->
     <canvas id="trackCanvas" class="track-canvas"></canvas>
 
     <!-- Content -->
@@ -108,7 +119,7 @@
 
   <script src="js/main.js"></script>
   <script>
-  // ─── TRACK + CAR CANVAS ANIMATION ───────────────────────────────────────
+  // ─── INDY-STYLE ISOMETRIC TRACK + CAR CANVAS ANIMATION ─────────────────
   (function() {
     const canvas = document.getElementById('trackCanvas');
     const ctx = canvas.getContext('2d');
@@ -120,58 +131,188 @@
     resize();
     window.addEventListener('resize', resize);
 
-    // Build an oval track path based on canvas size
-    function getTrackPath(w, h) {
-      const cx = w / 2, cy = h / 2;
-      const rx = Math.min(w * 0.42, 420);
-      const ry = Math.min(h * 0.32, 220);
-      const path = new Path2D();
-      path.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-      return { path, cx, cy, rx, ry };
+    // ── TRACK GEOMETRY ─────────────────────────────────────────────────────
+    // Classic Indy-style road course: two long straights connected by
+    // a tight hairpin at one end and a wide sweeping chicane at the other.
+    // The whole shape is sheared vertically to give an isometric feel.
+    // All coordinates are in a normalized 0–1000 x 0–600 space,
+    // then transformed to fit and offset on screen.
+
+    function getTransform(w, h) {
+      // Scale to fit canvas with some padding, then apply isometric shear
+      const scale = Math.min(w / 1100, h / 720) * 0.88;
+      // Center of the 1000×600 design space
+      const originX = w / 2 - 500 * scale;
+      const originY = h / 2 - 300 * scale + h * 0.04;
+      return { scale, originX, originY };
     }
 
-    // Get x,y position along ellipse at angle t (0–2PI)
-    function ellipsePoint(cx, cy, rx, ry, t) {
+    // Convert design-space point to canvas coords with isometric shear
+    function iso(x, y, transform) {
+      const { scale, originX, originY } = transform;
+      // Isometric shear: shift x by +0.18*y, compress y by 0.72
+      const sx = x + y * 0.18;
+      const sy = y * 0.72;
       return {
-        x: cx + rx * Math.cos(t),
-        y: cy + ry * Math.sin(t),
-        // tangent angle for car rotation
-        angle: Math.atan2(-ry * Math.cos(t), rx * Math.sin(t)) // perpendicular removed — tangent:
+        x: originX + sx * scale,
+        y: originY + sy * scale
       };
     }
-    function ellipseTangent(rx, ry, t) {
-      // derivative of (rx*cos t, ry*sin t)
-      const dx = -rx * Math.sin(t);
-      const dy = ry * Math.cos(t);
-      return Math.atan2(dy, dx);
+
+    // The track centerline — a classic Indy-style road course
+    // Right side: long main straight
+    // Top: tight right-angle hairpin (Turn 1)
+    // Left side: long back straight
+    // Bottom: sweeping left-hand chicane / carousel complex (Turns 2-4)
+    // All points in design space [0..1000, 0..600]
+    function buildTrackCenterline() {
+      return [
+        // Main straight — bottom-right, going up
+        { x: 820, y: 530 },
+        { x: 820, y: 420 },
+        { x: 820, y: 300 },
+        { x: 820, y: 180 },
+        // Turn 1 — tight right-hand hairpin at top-right
+        { x: 820, y: 120 },
+        { x: 800, y: 80 },
+        { x: 760, y: 60 },
+        { x: 710, y: 60 },
+        { x: 670, y: 75 },
+        { x: 645, y: 105 },
+        { x: 635, y: 145 },
+        // Turn 2 exit / back straight begins
+        { x: 630, y: 200 },
+        { x: 620, y: 280 },
+        // Back straight — going down-left (Indy-style long flat)
+        { x: 600, y: 330 },
+        { x: 520, y: 340 },
+        { x: 430, y: 340 },
+        { x: 340, y: 335 },
+        { x: 250, y: 325 },
+        // Turn 3 — wide left-hander / chicane entry
+        { x: 180, y: 310 },
+        { x: 135, y: 285 },
+        { x: 110, y: 250 },
+        { x: 105, y: 210 },
+        { x: 120, y: 175 },
+        // Chicane esses — S-curve complex
+        { x: 155, y: 150 },
+        { x: 200, y: 138 },
+        { x: 245, y: 145 },
+        { x: 275, y: 168 },
+        { x: 285, y: 200 },
+        { x: 270, y: 232 },
+        { x: 240, y: 252 },
+        // Exit chicane, heading toward infield
+        { x: 200, y: 262 },
+        { x: 185, y: 290 },  // this creates a subtle dog-leg
+        // Sweeping right-hander back toward main straight
+        { x: 220, y: 370 },
+        { x: 290, y: 420 },
+        { x: 380, y: 460 },
+        { x: 480, y: 490 },
+        { x: 580, y: 510 },
+        // Final corner — sweeping right onto main straight
+        { x: 670, y: 530 },
+        { x: 740, y: 535 },
+        { x: 790, y: 530 },
+        // Back to start
+        { x: 820, y: 530 },
+      ];
     }
 
-    // Car definitions — colors matching brand
+    // Catmull-Rom spline: smooth through all control points
+    function catmullRomSpline(points, tension, numSeg) {
+      tension = tension || 0.5;
+      numSeg = numSeg || 20;
+      const result = [];
+      const n = points.length;
+      for (let i = 0; i < n - 1; i++) {
+        const p0 = points[(i - 1 + n) % n];
+        const p1 = points[i];
+        const p2 = points[(i + 1) % n];
+        const p3 = points[(i + 2) % n];
+        for (let j = 0; j < numSeg; j++) {
+          const t = j / numSeg;
+          const t2 = t * t, t3 = t2 * t;
+          const x = 0.5 * (
+            (2 * p1.x) +
+            (-p0.x + p2.x) * t +
+            (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
+            (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3
+          );
+          const y = 0.5 * (
+            (2 * p1.y) +
+            (-p0.y + p2.y) * t +
+            (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
+            (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3
+          );
+          result.push({ x, y });
+        }
+      }
+      return result;
+    }
+
+    // Pre-compute spline points
+    const rawPts = buildTrackCenterline();
+    const splinePts = catmullRomSpline(rawPts, 0.5, 18);
+    const totalPts = splinePts.length;
+
+    // ── CAR DEFINITIONS ────────────────────────────────────────────────────
     const carDefs = [
-      { color: '#e8001e', shadowColor: 'rgba(232,0,30,0.6)', speed: 0.0110, offset: 0,         bodyColor: '#cc0018', stripe: '#ffffff' },
-      { color: '#1565e8', shadowColor: 'rgba(21,101,232,0.6)', speed: 0.0085, offset: Math.PI * 0.55, bodyColor: '#0d4fc4', stripe: '#ffffff' },
-      { color: '#d0d8f0', shadowColor: 'rgba(208,216,240,0.5)', speed: 0.0130, offset: Math.PI * 1.1,  bodyColor: '#b0bcd8', stripe: '#e8001e' },
-      { color: '#f0c040', shadowColor: 'rgba(240,192,64,0.5)',  speed: 0.0072, offset: Math.PI * 1.7,  bodyColor: '#d4a820', stripe: '#0d1b3e' },
+      { bodyColor: '#cc0018', stripe: '#ffffff', shadowColor: 'rgba(232,0,30,0.6)',  speed: 1.0,  tOffset: 0 },
+      { bodyColor: '#0d4fc4', stripe: '#ffffff', shadowColor: 'rgba(21,101,232,0.6)', speed: 0.82, tOffset: Math.floor(totalPts * 0.28) },
+      { bodyColor: '#b0bcd8', stripe: '#e8001e', shadowColor: 'rgba(208,216,240,0.5)', speed: 1.15, tOffset: Math.floor(totalPts * 0.56) },
+      { bodyColor: '#d4a820', stripe: '#0d1b3e', shadowColor: 'rgba(240,192,64,0.5)',  speed: 0.70, tOffset: Math.floor(totalPts * 0.74) },
     ];
 
-    const cars = carDefs.map(d => ({ ...d, t: d.offset }));
+    const cars = carDefs.map(d => ({
+      ...d,
+      // float index into spline (allows sub-step interpolation)
+      pos: d.tOffset,
+    }));
 
-    // Draw a Traxxas Rustler-style RC truck top-down
-    function drawCar(ctx, x, y, angle, car, scale) {
+    // ── DRAW HELPERS ───────────────────────────────────────────────────────
+
+    function getSplinePt(idx) {
+      const i = ((idx % totalPts) + totalPts) % totalPts;
+      return splinePts[i];
+    }
+
+    // Interpolate between two spline pts
+    function lerpSplinePt(pos) {
+      const i0 = Math.floor(pos) % totalPts;
+      const i1 = (i0 + 1) % totalPts;
+      const t = pos - Math.floor(pos);
+      const a = splinePts[i0];
+      const b = splinePts[i1];
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    }
+
+    // Tangent angle of car at spline position
+    function splineTangent(pos, transform) {
+      const ahead = lerpSplinePt((pos + 1.5) % totalPts);
+      const behind = lerpSplinePt((pos - 1.5 + totalPts) % totalPts);
+      const a = iso(ahead.x, ahead.y, transform);
+      const b = iso(behind.x, behind.y, transform);
+      return Math.atan2(a.y - b.y, a.x - b.x);
+    }
+
+    // Draw Traxxas Rustler top-down RC car (isometric foreshortened)
+    function drawCar(cx, cy, angle, car, scale) {
       ctx.save();
-      ctx.translate(x, y);
+      ctx.translate(cx, cy);
       ctx.rotate(angle);
-      ctx.scale(scale, scale);
+      // Isometric foreshortening: squish the y axis of the car
+      ctx.scale(scale, scale * 0.7);
 
-      const W = 13, L = 22; // half-width, half-length
+      const W = 13, L = 22;
 
-      // Shadow / glow under car
       ctx.shadowColor = car.shadowColor;
-      ctx.shadowBlur = 18;
+      ctx.shadowBlur = 16;
 
-      // Main body — slightly rounded rectangle, wider in middle (cab area)
+      // Body
       ctx.beginPath();
-      // Body shape: wider at front/cab, tapers slightly at rear
       ctx.moveTo(-L, -W * 0.7);
       ctx.lineTo(-L * 0.3, -W);
       ctx.lineTo(L * 0.5, -W);
@@ -183,163 +324,127 @@
       ctx.closePath();
       ctx.fillStyle = car.bodyColor;
       ctx.fill();
-
       ctx.shadowBlur = 0;
 
-      // Cab / cockpit area (darker roof)
+      // Cab
       ctx.beginPath();
-      ctx.moveTo(-L * 0.05, -W * 0.72);
-      ctx.lineTo(L * 0.42, -W * 0.72);
-      ctx.lineTo(L * 0.42, W * 0.72);
-      ctx.lineTo(-L * 0.05, W * 0.72);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.rect(-L * 0.05, -W * 0.72, L * 0.47, W * 1.44);
+      ctx.fillStyle = 'rgba(0,0,0,0.32)';
       ctx.fill();
 
       // Center stripe
-      ctx.beginPath();
-      ctx.rect(-L, -3, L * 2, 6);
+      ctx.globalAlpha = 0.22;
       ctx.fillStyle = car.stripe;
-      ctx.globalAlpha = 0.25;
-      ctx.fill();
+      ctx.fillRect(-L, -3, L * 2, 6);
       ctx.globalAlpha = 1;
 
-      // Front bumper
-      ctx.beginPath();
-      ctx.rect(L * 0.82, -W * 0.55, L * 0.22, W * 1.1);
-      ctx.fillStyle = 'rgba(255,255,255,0.15)';
-      ctx.fill();
-
-      // Rear bumper
-      ctx.beginPath();
-      ctx.rect(-L, -W * 0.55, L * 0.15, W * 1.1);
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
-      ctx.fill();
-
-      // Wheels — 4 corners
-      const wheelPositions = [
-        { x: L * 0.55,  y: -W * 0.92 },
-        { x: L * 0.55,  y:  W * 0.92 },
-        { x: -L * 0.55, y: -W * 0.92 },
-        { x: -L * 0.55, y:  W * 0.92 },
-      ];
-      wheelPositions.forEach(wp => {
-        // Tire
-        ctx.beginPath();
-        ctx.ellipse(wp.x, wp.y, 7, 5, 0, 0, Math.PI * 2);
-        ctx.fillStyle = '#1a1a1a';
-        ctx.fill();
-        // Rim
-        ctx.beginPath();
-        ctx.ellipse(wp.x, wp.y, 4, 3, 0, 0, Math.PI * 2);
-        ctx.fillStyle = '#888';
-        ctx.fill();
-        // Rim highlight
-        ctx.beginPath();
-        ctx.ellipse(wp.x - 1, wp.y - 1, 1.5, 1.2, 0, 0, Math.PI * 2);
-        ctx.fillStyle = '#ccc';
-        ctx.fill();
+      // Wheels
+      [{ x: L * 0.55, y: -W * 0.9 }, { x: L * 0.55, y: W * 0.9 },
+       { x: -L * 0.55, y: -W * 0.9 }, { x: -L * 0.55, y: W * 0.9 }].forEach(wp => {
+        ctx.beginPath(); ctx.ellipse(wp.x, wp.y, 7, 4.5, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#1a1a1a'; ctx.fill();
+        ctx.beginPath(); ctx.ellipse(wp.x, wp.y, 3.5, 2.5, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#888'; ctx.fill();
       });
 
-      // Headlights (front)
-      ctx.beginPath();
-      ctx.ellipse(L * 0.95, -W * 0.4, 2.5, 2, 0, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,240,180,0.9)';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.ellipse(L * 0.95, W * 0.4, 2.5, 2, 0, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,240,180,0.9)';
-      ctx.fill();
+      // Headlights
+      ctx.fillStyle = 'rgba(255,240,180,0.88)';
+      ctx.beginPath(); ctx.ellipse(L * 0.94, -W * 0.38, 2.2, 1.8, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(L * 0.94, W * 0.38, 2.2, 1.8, 0, 0, Math.PI * 2); ctx.fill();
 
-      // FPV camera bump on top-front
-      ctx.beginPath();
-      ctx.rect(L * 0.3, -4, 8, 8);
+      // FPV camera
       ctx.fillStyle = '#222';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(L * 0.34 + 4, 0, 3, 0, Math.PI * 2);
-      ctx.fillStyle = '#444';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(L * 0.34 + 4, 0, 1.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#88ccff';
-      ctx.fill();
-
-      // Body number plate area
-      ctx.beginPath();
-      ctx.rect(-L * 0.45, -W * 0.5, L * 0.5, W);
-      ctx.fillStyle = 'rgba(255,255,255,0.07)';
-      ctx.fill();
+      ctx.fillRect(L * 0.3, -3.5, 7, 7);
+      ctx.beginPath(); ctx.arc(L * 0.34 + 3.5, 0, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#444'; ctx.fill();
+      ctx.beginPath(); ctx.arc(L * 0.34 + 3.5, 0, 1.2, 0, Math.PI * 2);
+      ctx.fillStyle = '#88ccff'; ctx.fill();
 
       ctx.restore();
     }
 
-    // Draw the track
-    function drawTrack(w, h) {
-      const { cx, cy, rx, ry } = getTrackPath(w, h);
-      const trackW = 48;
+    // ── DRAW TRACK ─────────────────────────────────────────────────────────
+    function drawTrack(transform) {
+      const trackW = 38 * transform.scale;
 
-      // Outer glow
+      // Convert all spline pts to canvas coords
+      const pts = splinePts.map(p => iso(p.x, p.y, transform));
+
+      // ── Outer glow
       ctx.save();
-      ctx.shadowColor = 'rgba(208,2,27,0.08)';
-      ctx.shadowBlur = 40;
+      ctx.shadowColor = 'rgba(208,2,27,0.06)';
+      ctx.shadowBlur = 50;
       ctx.beginPath();
-      ctx.ellipse(cx, cy, rx + trackW * 0.5, ry + trackW * 0.5, 0, 0, Math.PI * 2);
+      pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.closePath();
       ctx.strokeStyle = 'transparent';
-      ctx.lineWidth = trackW + 20;
+      ctx.lineWidth = trackW + 24;
       ctx.stroke();
       ctx.restore();
 
-      // Track surface (asphalt)
+      // ── Asphalt surface
       ctx.beginPath();
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(30,38,52,0.85)';
+      pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(28,36,50,0.88)';
       ctx.lineWidth = trackW;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
       ctx.stroke();
 
-      // Track edge lines
+      // ── Outer edge white line
       ctx.beginPath();
-      ctx.ellipse(cx, cy, rx + trackW * 0.48, ry + trackW * 0.48, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(200,212,232,0.12)';
-      ctx.lineWidth = 1.5;
+      pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(200,212,232,0.14)';
+      ctx.lineWidth = trackW + 2.5;
       ctx.stroke();
 
+      // ── Inner edge line
       ctx.beginPath();
-      ctx.ellipse(cx, cy, rx - trackW * 0.48, ry - trackW * 0.48, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(200,212,232,0.12)';
-      ctx.lineWidth = 1.5;
+      pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(200,212,232,0.10)';
+      ctx.lineWidth = trackW - 8;
       ctx.stroke();
 
-      // Center dashed line
+      // ── Center dashed line
       ctx.save();
-      ctx.setLineDash([18, 14]);
+      ctx.setLineDash([14 * transform.scale, 10 * transform.scale]);
       ctx.beginPath();
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(200,212,232,0.06)';
-      ctx.lineWidth = 1;
+      pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(200,212,232,0.07)';
+      ctx.lineWidth = 1.2;
       ctx.stroke();
       ctx.restore();
 
-      // Start/finish line
-      const sfX = cx + rx;
-      const sfY = cy;
+      // ── Start/finish line — SOLID RED (replaces checkered)
+      // Position: on the main straight, just below Turn 1 exit
+      // Approx spline index ~6 (near top of main straight)
+      const sfIdx = 6;
+      const sfPt = splinePts[sfIdx];
+      const sfPtNext = splinePts[(sfIdx + 1) % totalPts];
+      const sfA = iso(sfPt.x, sfPt.y, transform);
+      const sfB = iso(sfPtNext.x, sfPtNext.y, transform);
+      const sfAngle = Math.atan2(sfB.y - sfA.y, sfB.x - sfA.x);
+      const lineHalfLen = (trackW / 2) + 2;
+
       ctx.save();
-      ctx.translate(sfX, sfY);
-      ctx.rotate(Math.PI / 2);
-      // Checkered pattern
-      const sqSize = 5;
-      const rows = 4, cols = Math.floor(trackW / sqSize);
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const isWhite = (r + c) % 2 === 0;
-          ctx.fillStyle = isWhite ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)';
-          ctx.fillRect((c - cols/2) * sqSize, r * sqSize - rows * sqSize / 2, sqSize, sqSize);
-        }
-      }
+      ctx.translate(sfA.x, sfA.y);
+      ctx.rotate(sfAngle + Math.PI / 2);
+      // Solid red line
+      ctx.fillStyle = '#d0021b';
+      ctx.shadowColor = 'rgba(208,2,27,0.7)';
+      ctx.shadowBlur = 8;
+      ctx.fillRect(-lineHalfLen, -3 * transform.scale, lineHalfLen * 2, 6 * transform.scale);
       ctx.restore();
     }
 
+    // ── ANIMATE ────────────────────────────────────────────────────────────
     let lastTime = 0;
+    const BASE_SPEED = 0.22; // spline steps per frame at 60fps
+
     function animate(ts) {
       const dt = Math.min((ts - lastTime) / 16.67, 3);
       lastTime = ts;
@@ -347,39 +452,32 @@
       const w = canvas.width, h = canvas.height;
       ctx.clearRect(0, 0, w, h);
 
-      const { cx, cy, rx, ry } = getTrackPath(w, h);
+      const transform = getTransform(w, h);
 
-      drawTrack(w, h);
+      drawTrack(transform);
 
-      // Scale cars based on track size
-      const carScale = Math.max(0.7, Math.min(1.3, rx / 320));
+      // Car scale relative to track size
+      const carScale = Math.max(0.65, Math.min(1.25, transform.scale * 1.05));
 
-      // Draw tire marks / trails first
+      // Draw car glows first
       cars.forEach(car => {
-        const pos = ellipsePoint(cx, cy, rx, ry, car.t);
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 3 * carScale, 0, Math.PI * 2);
-        ctx.fillStyle = car.shadowColor;
-        ctx.fill();
-      });
-
-      // Update and draw cars
-      cars.forEach(car => {
-        car.t += car.speed * dt;
-        if (car.t > Math.PI * 2) car.t -= Math.PI * 2;
-
-        const pos = ellipsePoint(cx, cy, rx, ry, car.t);
-        const angle = ellipseTangent(rx, ry, car.t);
-
-        // Glow ring
+        const raw = lerpSplinePt(car.pos);
+        const cp = iso(raw.x, raw.y, transform);
         ctx.save();
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 18 * carScale, 0, Math.PI * 2);
-        ctx.fillStyle = car.shadowColor.replace('0.6', '0.15').replace('0.5', '0.12');
+        ctx.arc(cp.x, cp.y, 16 * carScale, 0, Math.PI * 2);
+        ctx.fillStyle = car.shadowColor.replace(/[\d.]+\)$/, '0.13)');
         ctx.fill();
         ctx.restore();
+      });
 
-        drawCar(ctx, pos.x, pos.y, angle, car, carScale);
+      // Draw cars
+      cars.forEach(car => {
+        car.pos = (car.pos + BASE_SPEED * car.speed * dt) % totalPts;
+        const raw = lerpSplinePt(car.pos);
+        const cp = iso(raw.x, raw.y, transform);
+        const angle = splineTangent(car.pos, transform);
+        drawCar(cp.x, cp.y, angle, car, carScale);
       });
 
       requestAnimationFrame(animate);
